@@ -4,7 +4,7 @@
 % carlos85loza@gmail.com
 
 %%
-function [X_M_snippet_tr, alph_tr, alph_all] = Embedding_Trans(X,M)
+function [X_M_snippet_tr, beta_tr, beta_all] = Embedding_Trans(X,M)
 % INPUTS:
 % X - EEG data. It can be 1. single-trial (row vector) 
 % 2. multi-trial/same duration (matrix form), or
@@ -15,9 +15,9 @@ function [X_M_snippet_tr, alph_tr, alph_all] = Embedding_Trans(X,M)
 % events
 % OUTPUTS:
 % X_M_snippet_tr - M-snippets separated by trials
-% alph_tr - Amplitude/Norm of all possible M-dimensional snippets separated
+% beta_tr - Amplitude/Norm of all possible M-dimensional snippets separated
 % by trials and mapped directly to the M-snippets in X_M_snippet_tr
-% alph_all - Amplitude/Norm of all possible M-dimensional snippets for all
+% beta_all - Amplitude/Norm of all possible M-dimensional snippets for all
 % trials, i.e. Embedding Transform
 
 % Check if input is cell
@@ -28,7 +28,7 @@ if iscell(X) == 0
 end
 
 X_M_snippet_tr = cell(n_tr,1);
-alph_tr = cell(n_tr,1);
+beta_tr = cell(n_tr,1);
 
 % Amplitude of Hilbert Transform
 X_abs = cell(n_tr,1);
@@ -53,18 +53,18 @@ for i = 1:n_tr
 end
 
 % Embedding Transform
-alph_all = zeros(0,0);
+beta_all = zeros(0,0);
 for i = 1:n_tr
-    [X_M_snippet, alph] = Embedding_Trans_all(X{i,1},M,X_pks{i,1});
-    alph_all = [alph_all; abs(alph)];       % Stack norms from all trials
+    [X_M_snippet, beta_aux] = Embedding_Trans_all(X{i,1},M,X_pks{i,1});
+    beta_all = [beta_all; abs(beta_aux)];       % Stack norms from all trials
     X_M_snippet_tr{i,1} = X_M_snippet;
-    alph_tr{i,1} = alph;
+    beta_tr{i,1} = beta_aux;
 end
 
 end
 
 %%
-function [X_M_snippet, alph] = Embedding_Trans_all(x,M,pk_loc)
+function [X_M_snippet, beta_trial] = Embedding_Trans_all(x,M,pk_loc)
 % INPUTS:
 % x - Single-channel, single-trial bandpassed EEG trace
 % M - Dimensionality of embedding, i.e. duration (in samples) of putative
@@ -73,7 +73,7 @@ function [X_M_snippet, alph] = Embedding_Trans_all(x,M,pk_loc)
 % corresponding to input x
 % OUTPUTS:
 % X_M_snippet - 
-% alph - Amplitude/Norm of all possible M-dimensional snippets, i.e. 
+% beta_trial - Amplitude/Norm of all possible M-dimensional snippets, i.e. 
 % Embedding Transform
 % X_M_snippet - M-snippets discovered/extracted in the current trial
 
@@ -81,7 +81,7 @@ N = length(x);
 L = ceil((N+M-1)/M);    % Maximum possible number of non-overlapping atoms
 stp_fl = 0;             % Stopping criterion/flag
 X_M_snippet = zeros(M,L);
-alph = zeros(L,1);
+beta_trial = zeros(L,1);
 n_pks = length(pk_loc);
 
 aux_x = x;
@@ -90,13 +90,16 @@ aux_x = x;
 for i = 1:n_pks
     if pk_loc(i) - round(M/2) <= 0
         idx = 1:pk_loc(i) + round(M/2) - 1;
+        x_norm = [zeros(1, M - length(idx)) x(idx)];
     elseif pk_loc(i) + round(M/2) - 1 > N
         idx = pk_loc(i) - round(M/2):N; 
+        x_norm = [x(idx) zeros(1, M - length(idx))];
     else
         idx = pk_loc(i) - round(M/2):pk_loc(i) + round(M/2) - 1;
+        x_norm = x(idx);
     end
-    alph(i,1) = norm(x(idx));
-    X_M_snippet(:,i) = x(idx)';
+    beta_trial(i,1) = norm(x_norm);
+    X_M_snippet(:,i) = x_norm';
     aux_x(idx) = zeros(1,length(idx));
 end
 i = i + 1;
@@ -108,7 +111,7 @@ while stp_fl == 0
         for j = 1:length(tau_p)
             idx = tau_p(j):tau_p(j) + M - 1;
             X_M_snippet(:,i) = x(idx)';
-            alph(i,1) = norm(x(idx));
+            beta_trial(i,1) = norm(x(idx));
             aux_x(idx) = zeros(1,length(idx));
             i = i + 1;
         end
@@ -117,7 +120,7 @@ while stp_fl == 0
     end
 end
 
-alph = alph(1:i-1,1);
+beta_trial = beta_trial(1:i-1,1);
 X_M_snippet = X_M_snippet(:,i-1);
 
 % % Optional - Not really necessary when trials are long, besides these
@@ -126,12 +129,12 @@ X_M_snippet = X_M_snippet(:,i-1);
 % % norm
 % x_rem = aux_x(aux_x ~= 0);
 % n_rem = floor(length(x_rem)/M);
-% alph_rem = zeros(n_rem,1);
+% beta_rem = zeros(n_rem,1);
 % if n_rem > 0
 %     for i = 1:n_rem
-%         alph_rem(i) = norm(x_rem((i-1)*M+1:i*M));
+%         beta_rem(i) = norm(x_rem((i-1)*M+1:i*M));
 %     end
-%     alph = [alph; alph_rem];
+%     beta_trial = [beta_trial; beta_rem];
 % end
 
 end
@@ -139,7 +142,7 @@ end
 %%
 function [tau_p, fl] = check_potential_seg(aux_x, M)
 % INPUTS:
-% aux_m - Single-channel, single-trial bandpassed EEG trace after removing
+% aux_x - Single-channel, single-trial bandpassed EEG trace after removing
 % already discovered M-snippets
 % M - Dimensionality of embedding, i.e. duration (in samples) of putative
 % events
