@@ -1,5 +1,5 @@
 % Function that implements robust MCC-SVD
-% Zero mean variant
+% Zero-mean variant
 % Author: Carlos Loza
 % carlos85loza@gmail.com
 %%
@@ -7,7 +7,9 @@ function U = MCC_SVD(X, eps, mr, Corr_sigma)
 % INPUTS:
 % X - Input samples
 % eps - Tolerance. Stopping criterion
-% mr - Number of principal components to be estimated
+% mr - Dimensionality (number of principal components) where outliers can
+% be detected. In the case of a MPP approach for EEG, mr is equal to the 
+% number of principal components to be estimated
 % Corr_sigma - Kernel width for correntropy estimation
 % OUTPUTS:
 % U - First mr principal components. Matrix form
@@ -19,28 +21,32 @@ fl = 0;
 [U_t,~,~] = svds(X,mr);
 mu_t = mean(X,2);
 mu_t = zeros(size(mu_t));
-[~,n] = size(X);
+[d, n] = size(X);
 ct_max = 50;            % Maximum number of iterations of HQ optimization
+
+X = bsxfun(@minus,X,mu_t);       % Zero-mean variant
 
 if nargin == 3
     ct = 1;
     while fl == 0
-        % Kernel width calculation - Silverman's rule
-        X_cent_t = bsxfun(@minus,X,mu_t);
-        aux = (X_cent_t - (U_t*U_t')*X_cent_t);
+        % Kernel width calculation - Silverman's rule       
+        aux = (X - (U_t*U_t')*X);
         X_d_t = sum(aux.^2,1);
         sig_e_t = std(X_d_t);
         R_t = iqr(X_d_t);
         Corr_sigma = 1.06*min([sig_e_t R_t/1.34])*n^(-1/5);
-    
+        Param_Corr = sum(X.^2,1) - sum((U_t'*X).^2,1);
+        
         % HQ alternating optimizations
-        Corr_arg_t = X_d_t;
-        p_t = -exp(-Corr_arg_t/(2*Corr_sigma));  
-        %mu_t = (1/sum(p_t))*(sum(bsxfun(@times,p_t,X),2));        
-        mu_t = zeros(size(mu_t));       
-        X_cent_t = bsxfun(@minus,X,mu_t);
-        P_M_t = diag(-p_t);
-        PCA_param = X_cent_t*P_M_t*(X_cent_t)';
+        p_t = -exp(-Param_Corr/(2*Corr_sigma));
+        % Fast calculation of weighted covariance matrix
+        JM = zeros(d, d, n);
+        for k = 1:n
+            JM(:,:,k) = X(:,k)*X(:,k)';
+        end
+        JM = reshape(JM,d^2,n);
+        w_C = reshape(JM*(-p_t)', d, d);
+        PCA_param = w_C/trace(w_C);               % Weighted covariance matrix
         
         if mean(isnan(PCA_param(:))) ~= 0
             display('NaN Warning')
@@ -74,17 +80,17 @@ elseif nargin == 4
     % Kernel width provided
     ct = 1;
     while fl == 0
+        Param_Corr = sum(X.^2,1) - sum((U_t'*X).^2,1);
         % HQ alternating optimizations
-        X_cent_t = bsxfun(@minus,X,mu_t);
-        aux = (X_cent_t - (U_t*U_t')*X_cent_t);
-        X_d_t = sum(aux.^2,1);
-        Corr_arg_t = X_d_t;
-        p_t = -exp(-Corr_arg_t/(2*Corr_sigma));  
-        %mu_t = (1/sum(p_t))*(sum(bsxfun(@times,p_t,X),2));        
-        mu_t = zeros(size(mu_t));       
-        X_cent_t = bsxfun(@minus,X,mu_t);
-        P_M_t = diag(-p_t);
-        PCA_param = X_cent_t*P_M_t*(X_cent_t)';
+        p_t = -exp(-Param_Corr/(2*Corr_sigma));
+        % Fast calculation of weighted covariance matrix
+        JM = zeros(d, d, n);
+        for k = 1:n
+            JM(:,:,k) = X(:,k)*X(:,k)';
+        end
+        JM = reshape(JM,d^2,n);
+        w_C = reshape(JM*(-p_t)', d, d);
+        PCA_param = w_C/trace(w_C);               % Weighted covariance matrix
         
         if mean(isnan(PCA_param(:))) ~= 0
             display('NaN Warning')
